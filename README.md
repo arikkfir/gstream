@@ -1,12 +1,12 @@
-# pyper
+# gstream
 
 ![Maintainer](https://img.shields.io/badge/maintainer-arikkfir-blue)
-![GoVersion](https://img.shields.io/github/go-mod/go-version/arikkfir/pyper.svg)
-[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/arikkfir/pyper)
-[![GoReportCard](https://goreportcard.com/badge/github.com/arikkfir/pyper)](https://goreportcard.com/report/github.com/arikkfir/pyper)
-[![codecov](https://codecov.io/gh/arikkfir/pyper/branch/main/graph/badge.svg?token=QP3OAILB25)](https://codecov.io/gh/arikkfir/pyper)
+![GoVersion](https://img.shields.io/github/go-mod/go-version/arikkfir/gstream.svg)
+[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/arikkfir/gstream)
+[![GoReportCard](https://goreportcard.com/badge/github.com/arikkfir/gstream)](https://goreportcard.com/report/github.com/arikkfir/gstream)
+[![codecov](https://codecov.io/gh/arikkfir/gstream/branch/main/graph/badge.svg?token=QP3OAILB25)](https://codecov.io/gh/arikkfir/gstream)
 
-Pipeline for YAML nodes in Golang.
+Golang YAML node pipeline.
 
 ## Status
 
@@ -27,7 +27,11 @@ package main
 
 import (
 	"context"
-	"github.com/arikkfir/pyper/pkg"
+	. "github.com/arikkfir/gstream/pkg"
+	. "github.com/arikkfir/gstream/pkg/generate"
+	. "github.com/arikkfir/gstream/pkg/processing"
+	. "github.com/arikkfir/gstream/pkg/sink"
+	. "github.com/arikkfir/gstream/pkg/types"
 	"gopkg.in/yaml.v3"
 	"os"
 	"strings"
@@ -44,19 +48,13 @@ key: value3
 include: true`
 
 func main() {
-	input := pyper.MustReaderInput(strings.NewReader(yml))
-	nodes := make(chan *yaml.Node, 1000)
-	processor := pyper.MustFilterProcessor(
-		"$[?(@.include==true)]",
-		pyper.MustChannelSendProcessor(nodes),
-	)
-	if err := pyper.Pipe(context.Background(), []pyper.PipeInput{input}, processor); err != nil {
-		panic(err)
-	}
-	close(nodes)
-	if err := pyper.EncodeYAMLFromChannel(nodes, 2, os.Stderr); err != nil {
-		panic(err)
-	}
+    s := NewStream().
+        Generate(FromReader(strings.NewReader(yml))).
+        Transform(YAMLPathFilter("$[?(@.include==true)]")).
+        Sink(ToWriter(os.Stdout))
+    if err := s.Execute(context.Background()); err != nil {
+        panic(err)
+    }
 }
 ```
 

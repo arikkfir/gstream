@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/pyper.iml" filepath="$PROJECT_DIR$/.idea/pyper.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/gstream.iml" filepath="$PROJECT_DIR$/.idea/gstream.iml" />
     </modules>
   </component>
 </project>

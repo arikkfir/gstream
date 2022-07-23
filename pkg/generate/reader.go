@@ -1,35 +1,31 @@
-package pyper
+package generate
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	. "github.com/arikkfir/gstream/pkg/types"
 	"gopkg.in/yaml.v3"
 	"io"
 )
 
-func NewReaderInput(r io.Reader) (PipeInput, error) {
+func FromReader(r io.Reader) NodeGenerator {
 	return func(_ context.Context, target chan *yaml.Node) error {
 		decoder := yaml.NewDecoder(r)
 		for {
-			doc := yaml.Node{}
-			if err := decoder.Decode(&doc); err != nil {
+			node := &yaml.Node{}
+			if err := decoder.Decode(node); err != nil {
 				if errors.Is(err, io.EOF) {
 					return nil
 				} else {
 					return fmt.Errorf("failed parsing input: %w", err)
 				}
 			} else {
-				target <- &doc
+				if node.Kind == yaml.DocumentNode {
+					node = node.Content[0]
+				}
+				target <- node
 			}
 		}
-	}, nil
-}
-
-func MustReaderInput(r io.Reader) PipeInput {
-	if input, err := NewReaderInput(r); err != nil {
-		panic(err)
-	} else {
-		return input
 	}
 }
