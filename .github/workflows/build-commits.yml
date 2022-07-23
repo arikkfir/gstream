@@ -37,7 +37,7 @@ jobs:
             golang-${{ runner.os }}-${{ hashFiles('**/go.sum') }}-
             golang-${{ runner.os }}-
       - run: go mod download
-      - run: go vet
+      - run: go vet ./pkg ./internal
       - run: |
           go test -v -vet=off -race -shuffle ${SHUFFLE_SEED} -coverprofile=coverage.out -covermode=atomic ./pkg
         env:
