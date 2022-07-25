@@ -14,10 +14,10 @@ const (
 )
 
 type Stream interface {
-	Generate(generator NodeGenerator) Stream
-	Transform(transformer NodeTransformer) Stream
-	Process(processor NodeProcessor) Stream
-	Sink(sink NodeSink) Stream
+	Generate(generators ...NodeGenerator) Stream
+	Transform(transformers ...NodeTransformer) Stream
+	Process(processors ...NodeProcessor) Stream
+	Sink(sinks ...NodeSink) Stream
 	Execute(ctx context.Context) error
 }
 
@@ -35,45 +35,47 @@ type stream struct {
 }
 
 // Generate adds another node generator to the stream.
-func (p *stream) Generate(generator NodeGenerator) Stream {
+func (p *stream) Generate(generators ...NodeGenerator) Stream {
 	if p.started {
 		panic("stream already started")
 	}
-	p.generators = append(p.generators, generator)
+	p.generators = append(p.generators, generators...)
 	return p
 }
 
 // Transform adds a node transformer to the stream.
-func (p *stream) Transform(transformer NodeTransformer) Stream {
+func (p *stream) Transform(transformers ...NodeTransformer) Stream {
 	if p.started {
 		panic("stream already started")
 	}
-	p.handlers = append(p.handlers, transformer)
+	p.handlers = append(p.handlers, transformers...)
 	return p
 }
 
 // Process adds a node processor to the stream.
-func (p *stream) Process(processor NodeProcessor) Stream {
+func (p *stream) Process(processors ...NodeProcessor) Stream {
 	if p.started {
 		panic("stream already started")
 	}
-	p.handlers = append(p.handlers, func(ctx context.Context, node *yaml.Node, output chan *yaml.Node) error {
-		if err := processor(ctx, node); err != nil {
-			return err
-		} else {
-			output <- node
-			return nil
-		}
-	})
+	for _, processor := range processors {
+		p.handlers = append(p.handlers, func(ctx context.Context, node *yaml.Node, output chan *yaml.Node) error {
+			if err := processor(ctx, node); err != nil {
+				return err
+			} else {
+				output <- node
+				return nil
+			}
+		})
+	}
 	return p
 }
 
 // Sink adds a sink to the stream.
-func (p *stream) Sink(sink NodeSink) Stream {
+func (p *stream) Sink(sinks ...NodeSink) Stream {
 	if p.started {
 		panic("stream already started")
 	}
-	p.sinks = append(p.sinks, sink)
+	p.sinks = append(p.sinks, sinks...)
 	return p
 }
 

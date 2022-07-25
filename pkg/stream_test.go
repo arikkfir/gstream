@@ -5,150 +5,54 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"github.com/arikkfir/gstream/internal"
 	. "github.com/arikkfir/gstream/pkg/generate"
 	. "github.com/arikkfir/gstream/pkg/processing"
 	. "github.com/arikkfir/gstream/pkg/sink"
-	. "github.com/arikkfir/gstream/pkg/types"
 	"github.com/hexops/gotextdiff"
 	"github.com/hexops/gotextdiff/myers"
 	"github.com/hexops/gotextdiff/span"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
 	"gopkg.in/yaml.v3"
+	"io"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-func TestStream2(t *testing.T) {
+func TestSetProperty(t *testing.T) {
 	yamlString := `apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: t1
-  namespace: ns1
+firstName: John
+lastName: Doe
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: t1
-  namespace: ns2
+firstName: Jane
+lastName: Doe
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    labeled: yes
-  name: t2
-  namespace: ns1
-spec:
-  selector:
-    matchLabels:
-      labeled: yes
-  template:
-    metadata:
-      labels:
-        labeled: yes
-    spec:
-      containers:
-        - image: nginx
-          name: nginx
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    labeled: yes
-  name: t2
-  namespace: ns2
-spec:
-  selector:
-    matchLabels:
-      labeled: yes
-  template:
-    metadata:
-      labels:
-        labeled: yes
-    spec:
-      containers:
-        - image: nginx
-          name: nginx
-`
+firstName: Charlie
+lastName: Brown`
 	w2 := &bytes.Buffer{}
 	s := NewStream().
 		Generate(FromReader(strings.NewReader(yamlString))).
-		Process(
-			Tee(
-				K8sTargetingFilter(nil, nil),
-				NodeTransformerOf(AnnotateK8sResource("foo", "bar")),
-			),
-		).
+		Process(SetProperty("processed", true)).
 		Sink(ToWriter(w2))
 	if err := s.Execute(context.Background()); err != nil {
 		t.Error(fmt.Errorf("failed executing stream: %w", err))
 	}
 
 	expectedYAMLString := `apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    foo: bar
-  name: t1
-  namespace: ns1
+firstName: John
+lastName: Doe
+processed: true
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    foo: bar
-  name: t1
-  namespace: ns2
+firstName: Jane
+lastName: Doe
+processed: true
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  annotations:
-    foo: bar
-  labels:
-    labeled: yes
-  name: t2
-  namespace: ns1
-spec:
-  selector:
-    matchLabels:
-      labeled: yes
-  template:
-    metadata:
-      labels:
-        labeled: yes
-    spec:
-      containers:
-        - image: nginx
-          name: nginx
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  annotations:
-    foo: bar
-  labels:
-    labeled: yes
-  name: t2
-  namespace: ns2
-spec:
-  selector:
-    matchLabels:
-      labeled: yes
-  template:
-    metadata:
-      labels:
-        labeled: yes
-    spec:
-      containers:
-        - image: nginx
-          name: nginx`
-	if actual, err := internal.FormatYAML(w2); err != nil {
+firstName: Charlie
+lastName: Brown
+processed: true`
+	if actual, err := formatYAML(w2); err != nil {
 		t.Fatalf("Failed to format YAML output: %s", err)
-	} else if expected, err := internal.FormatYAML(strings.NewReader(expectedYAMLString)); err != nil {
+	} else if expected, err := formatYAML(strings.NewReader(expectedYAMLString)); err != nil {
 		t.Errorf("Failed to format expected YAML output: %s", err)
 	} else if strings.TrimSuffix(expected, "\n") != strings.TrimSuffix(actual, "\n") {
 		edits := myers.ComputeEdits(span.URIFromPath("expected"), expected, actual)
@@ -157,7 +61,7 @@ spec:
 	}
 }
 
-func TestStream(t *testing.T) {
+func TestScale(t *testing.T) {
 	const nodeCount = 1_000_000
 
 	// Target channel for nodes to be sent to, and YAML paths for validation
@@ -170,7 +74,7 @@ func TestStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create include2 path: %v", err)
 	}
-	fooAnnPath, err := yamlpath.NewPath("$.metadata.annotations.foo")
+	fooAnnPath, err := yamlpath.NewPath("$.foo")
 	if err != nil {
 		t.Fatalf("Failed to create foo annotation path: %v", err)
 	}
@@ -260,13 +164,7 @@ metadata:
 		}).
 		Transform(YAMLPathFilter("$[?(@.metadata.include1==true)]")).
 		Transform(YAMLPathFilter("$[?(@.metadata.include2==true)]")).
-		Transform(NodeTransformerOf(AnnotateK8sResource("foo", "bar"))).
-		//Process(
-		//	TeeNodeProcessor([]NodeTransformer{
-		//		YAMLPathNodeTransformer("$[?(@.metadata.include1==true)]"),
-		//		YAMLPathNodeTransformer("$[?(@.metadata.include2==true)]"),
-		//		NodeTransformerOf(K8sAnnotateNodeProcessor("foo", "bar")),
-		//	})).
+		Process(SetProperty("foo", "bar")).
 		Sink(ToChannel(c))
 	if err := s.Execute(context.Background()); err != nil {
 		t.Errorf("failed executing pipeline: %v", err)
@@ -278,4 +176,29 @@ metadata:
 	if count != 166667 {
 		t.Errorf("Expected 166667 nodes, got %d", count)
 	}
+}
+
+func formatYAML(yamlString io.Reader) (string, error) {
+	const formatYAMLFailureMessage = `%s: %w
+======
+%s
+======`
+
+	formatted := bytes.Buffer{}
+	decoder := yaml.NewDecoder(yamlString)
+	encoder := yaml.NewEncoder(&formatted)
+	encoder.SetIndent(2)
+	for {
+		var data interface{}
+		if err := decoder.Decode(&data); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", fmt.Errorf(formatYAMLFailureMessage, "failed decoding YAML", err, yamlString)
+		} else if err := encoder.Encode(data); err != nil {
+			return "", fmt.Errorf(formatYAMLFailureMessage, "failed encoding struct", err, yamlString)
+		}
+	}
+	encoder.Close()
+	return formatted.String(), nil
 }
