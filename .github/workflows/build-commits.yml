@@ -39,7 +39,7 @@ jobs:
       - run: go mod download
       - run: go vet ./pkg
       - run: |
-          go test -v -vet=off -race -shuffle ${SHUFFLE_SEED} -coverprofile=coverage.out -covermode=atomic ./pkg
+          go test -v -vet=off -race -shuffle ${SHUFFLE_SEED} -coverprofile=coverage.txt -covermode=atomic ./pkg
         env:
           SHUFFLE_SEED: ${{ github.run_number }}
       - uses: codecov/codecov-action@v3
